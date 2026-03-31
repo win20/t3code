@@ -8,7 +8,7 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
-import { randomUUID } from "~/lib/utils";
+import { isMacPlatform, randomUUID } from "~/lib/utils";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import { Schema } from "effect";
 import { selectThreadByRef, useStore } from "../store";
@@ -218,6 +218,25 @@ export function buildExpiredTerminalContextToastCopy(
     title: `${noun} omitted from message`,
     description: "Re-add it if you want that terminal output included.",
   };
+}
+
+export function shouldSubmitComposerOnEnter(input: {
+  event: Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">;
+  submitOnModEnter: boolean;
+  platform: string;
+}): boolean {
+  if (input.event.altKey || input.event.shiftKey) {
+    return false;
+  }
+
+  if (!input.submitOnModEnter) {
+    return !input.event.metaKey && !input.event.ctrlKey;
+  }
+
+  const useMetaForMod = isMacPlatform(input.platform);
+  return useMetaForMod
+    ? input.event.metaKey && !input.event.ctrlKey
+    : input.event.ctrlKey && !input.event.metaKey;
 }
 
 export function threadHasStarted(thread: Thread | null | undefined): boolean {

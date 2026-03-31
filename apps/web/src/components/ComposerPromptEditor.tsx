@@ -24,6 +24,7 @@ import {
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
+  INSERT_LINE_BREAK_COMMAND,
   COMMAND_PRIORITY_HIGH,
   KEY_BACKSPACE_COMMAND,
   $getRoot,
@@ -938,15 +939,22 @@ function ComposerCommandKeyPlugin(props: {
       key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
       event: KeyboardEvent | null,
     ): boolean => {
-      if (!props.onCommandKeyDown || !event) {
+      if (!event) {
         return false;
       }
-      const handled = props.onCommandKeyDown(key, event);
+      const handled = props.onCommandKeyDown?.(key, event) ?? false;
       if (handled) {
         event.preventDefault();
         event.stopPropagation();
+        return true;
       }
-      return handled;
+      if (key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        editor.dispatchCommand(INSERT_LINE_BREAK_COMMAND, event.shiftKey);
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      }
+      return false;
     };
 
     const unregisterArrowDown = editor.registerCommand(

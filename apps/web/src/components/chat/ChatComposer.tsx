@@ -39,7 +39,11 @@ import {
   expandCollapsedComposerCursor,
   replaceTextRange,
 } from "../../composer-logic";
-import { deriveComposerSendState, readFileAsDataUrl } from "../ChatView.logic";
+import {
+  deriveComposerSendState,
+  readFileAsDataUrl,
+  shouldSubmitComposerOnEnter,
+} from "../ChatView.logic";
 import {
   type ComposerImageAttachment,
   type DraftId,
@@ -1493,7 +1497,14 @@ export const ChatComposer = memo(
           return true;
         }
       }
-      if (key === "Enter" && !event.shiftKey) {
+      if (
+        key === "Enter" &&
+        shouldSubmitComposerOnEnter({
+          event,
+          submitOnModEnter: settings.submitOnModEnter,
+          platform: navigator.platform,
+        })
+      ) {
         void onSend();
         return true;
       }

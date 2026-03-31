@@ -1002,6 +1002,24 @@ async function pressComposerUndo(): Promise<void> {
   await waitForLayout();
 }
 
+function nativeModEnterOptions(): Pick<KeyboardEventInit, "ctrlKey" | "metaKey"> {
+  return isMacPlatform(navigator.platform) ? { metaKey: true } : { ctrlKey: true };
+}
+
+function dispatchComposerEnter(
+  composerEditor: HTMLElement,
+  options: Pick<KeyboardEventInit, "ctrlKey" | "metaKey"> = {},
+): void {
+  composerEditor.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+      ...options,
+    }),
+  );
+}
+
 async function waitForComposerText(expectedText: string): Promise<void> {
   await vi.waitFor(
     () => {
@@ -3714,6 +3732,213 @@ describe("ChatView timeline estimator parity (full app)", () => {
         { timeout: 8_000, interval: 16 },
       );
     } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("does not send on plain enter when mod+enter submit is enabled", async () => {
+    localStorage.setItem(
+      "t3code:client-settings:v1",
+      JSON.stringify({
+        ...DEFAULT_CLIENT_SETTINGS,
+        submitOnModEnter: true,
+      }),
+    );
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-submit-shortcut-newline" as MessageId,
+        targetText: "submit shortcut newline test",
+      }),
+    });
+
+    try {
+      const composerEditor = await waitForComposerEditor();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "hello");
+      await vi.waitFor(
+        () => {
+          expect(useComposerDraftStore.getState().draftsByThreadKey[THREAD_KEY]?.prompt).toBe(
+            "hello",
+          );
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      composerEditor.focus();
+      wsRequests.length = 0;
+      dispatchComposerEnter(composerEditor);
+      await waitForLayout();
+
+      expect(
+        wsRequests.some((request) => request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand),
+      ).toBe(false);
+      expect(useComposerDraftStore.getState().draftsByThreadKey[THREAD_KEY]?.prompt).toBe("hello");
+    } finally {
+      localStorage.removeItem("t3code:client-settings:v1");
+      await mounted.cleanup();
+    }
+  });
+
+  it("submits on mod+enter when mod+enter submit is enabled", async () => {
+    localStorage.setItem(
+      "t3code:client-settings:v1",
+      JSON.stringify({
+        ...DEFAULT_CLIENT_SETTINGS,
+        submitOnModEnter: true,
+      }),
+    );
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-submit-shortcut-send" as MessageId,
+        targetText: "submit shortcut send test",
+      }),
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      const composerEditor = await waitForComposerEditor();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "hello");
+      await vi.waitFor(
+        () => {
+          expect(useComposerDraftStore.getState().draftsByThreadKey[THREAD_KEY]?.prompt).toBe(
+            "hello",
+          );
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      composerEditor.focus();
+      wsRequests.length = 0;
+      dispatchComposerEnter(composerEditor, nativeModEnterOptions());
+
+      await vi.waitFor(
+        () => {
+          const dispatchRequest = wsRequests.find(
+            (request) => request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand,
+          );
+          expect(dispatchRequest).toMatchObject({
+            _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+            type: "thread.turn.start",
+            threadId: THREAD_ID,
+            message: {
+              text: "hello",
+            },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      localStorage.removeItem("t3code:client-settings:v1");
+      await mounted.cleanup();
+    }
+  });
+
+  it("requires mod+enter to submit pending user-input answers when the setting is enabled", async () => {
+    localStorage.setItem(
+      "t3code:client-settings:v1",
+      JSON.stringify({
+        ...DEFAULT_CLIENT_SETTINGS,
+        submitOnModEnter: true,
+      }),
+    );
+
+    const singleQuestionSnapshot = createSnapshotWithPendingUserInput();
+    const scopeQuestion = singleQuestionSnapshot.threads
+      .find((thread) => thread.id === THREAD_ID)
+      ?.activities.find((activity) => activity.kind === "user-input.requested")?.payload.questions[0];
+    if (!scopeQuestion) {
+      throw new Error("Missing pending user-input scope question fixture.");
+    }
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...singleQuestionSnapshot,
+        threads: singleQuestionSnapshot.threads.map((thread) =>
+          thread.id === THREAD_ID
+            ? Object.assign({}, thread, {
+                activities: thread.activities.map((activity) =>
+                  activity.kind === "user-input.requested"
+                    ? {
+                        ...activity,
+                        payload: {
+                          ...activity.payload,
+                          questions: [scopeQuestion],
+                        },
+                      }
+                    : activity,
+                ),
+              })
+            : thread,
+        ),
+      },
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await expect.element(page.getByText("What should this change cover?")).toBeVisible();
+      const submitAnswersButton = page.getByRole("button", { name: "Submit answers" });
+      await expect.element(submitAnswersButton).toBeDisabled();
+
+      const composerEditor = await waitForComposerEditor();
+      const composerEditorLocator = page.getByTestId("composer-editor");
+      composerEditor.focus();
+      await composerEditorLocator.fill("custom answer");
+
+      await vi.waitFor(
+        async () => {
+          await expect.element(submitAnswersButton).toBeEnabled();
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      wsRequests.length = 0;
+      dispatchComposerEnter(composerEditor);
+      await waitForLayout();
+
+      expect(
+        wsRequests.some((request) => request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand),
+      ).toBe(false);
+
+      dispatchComposerEnter(composerEditor, nativeModEnterOptions());
+
+      await vi.waitFor(
+        () => {
+          const dispatchRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === "thread.user-input.respond",
+          );
+          expect(dispatchRequest).toMatchObject({
+            _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+            type: "thread.user-input.respond",
+            requestId: "req-browser-user-input",
+            answers: {
+              scope: "custom answer",
+            },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      localStorage.removeItem("t3code:client-settings:v1");
       await mounted.cleanup();
     }
   });

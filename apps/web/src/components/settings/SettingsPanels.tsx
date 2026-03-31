@@ -371,6 +371,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap
         ? ["Diff line wrapping"]
         : []),
+      ...(settings.submitOnModEnter !== DEFAULT_UNIFIED_SETTINGS.submitOnModEnter
+        ? ["Submit shortcut"]
+        : []),
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
         : []),
@@ -394,6 +397,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.diffWordWrap,
       settings.enableAssistantStreaming,
+      settings.submitOnModEnter,
       settings.timestampFormat,
       theme,
     ],
@@ -807,6 +811,30 @@ export function GeneralSettingsPanel() {
                 updateSettings({ enableAssistantStreaming: Boolean(checked) })
               }
               aria-label="Stream assistant messages"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Submit with Cmd/Ctrl+Enter"
+          description="When enabled, Cmd+Enter on macOS or Ctrl+Enter on Windows/Linux submits the composer. Enter inserts a new line."
+          resetAction={
+            settings.submitOnModEnter !== DEFAULT_UNIFIED_SETTINGS.submitOnModEnter ? (
+              <SettingResetButton
+                label="submit shortcut"
+                onClick={() =>
+                  updateSettings({
+                    submitOnModEnter: DEFAULT_UNIFIED_SETTINGS.submitOnModEnter,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.submitOnModEnter}
+              onCheckedChange={(checked) => updateSettings({ submitOnModEnter: Boolean(checked) })}
+              aria-label="Submit with Cmd or Ctrl plus Enter"
             />
           }
         />

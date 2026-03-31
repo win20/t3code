@@ -12,10 +12,19 @@ import {
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
   shouldWriteThreadErrorToCurrentServerThread,
+  shouldSubmitComposerOnEnter,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+const keyboardEvent = (input?: Partial<KeyboardEvent>) =>
+  ({
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...input,
+  }) as Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey">;
 
 describe("deriveComposerSendState", () => {
   it("treats expired terminal pills as non-sendable content", () => {
@@ -63,6 +72,112 @@ describe("deriveComposerSendState", () => {
     expect(state.trimmedPrompt).toBe("yoo  waddup");
     expect(state.expiredTerminalContextCount).toBe(1);
     expect(state.hasSendableContent).toBe(true);
+  });
+});
+
+describe("shouldSubmitComposerOnEnter", () => {
+  it("submits on plain enter when the setting is disabled", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent(),
+        submitOnModEnter: false,
+        platform: "MacIntel",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent({ shiftKey: true }),
+        submitOnModEnter: false,
+        platform: "MacIntel",
+      }),
+    ).toBe(false);
+  });
+
+  it("submits on meta+enter on macOS when the setting is enabled", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent({ metaKey: true }),
+        submitOnModEnter: true,
+        platform: "MacIntel",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent(),
+        submitOnModEnter: true,
+        platform: "MacIntel",
+      }),
+    ).toBe(false);
+  });
+
+  it("submits on ctrl+enter on non-mac platforms when the setting is enabled", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent({ ctrlKey: true }),
+        submitOnModEnter: true,
+        platform: "Win32",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent({ metaKey: true }),
+        submitOnModEnter: true,
+        platform: "Win32",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldSubmitComposerOnEnter", () => {
+  it("submits on plain enter when the setting is disabled", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent(),
+        submitOnModEnter: false,
+        platform: "MacIntel",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent({ shiftKey: true }),
+        submitOnModEnter: false,
+        platform: "MacIntel",
+      }),
+    ).toBe(false);
+  });
+
+  it("submits on meta+enter on macOS when the setting is enabled", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent({ metaKey: true }),
+        submitOnModEnter: true,
+        platform: "MacIntel",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent(),
+        submitOnModEnter: true,
+        platform: "MacIntel",
+      }),
+    ).toBe(false);
+  });
+
+  it("submits on ctrl+enter on non-mac platforms when the setting is enabled", () => {
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent({ ctrlKey: true }),
+        submitOnModEnter: true,
+        platform: "Linux x86_64",
+      }),
+    ).toBe(true);
+    expect(
+      shouldSubmitComposerOnEnter({
+        event: keyboardEvent(),
+        submitOnModEnter: true,
+        platform: "Linux x86_64",
+      }),
+    ).toBe(false);
   });
 });
 
