@@ -45,6 +45,7 @@ const DiffPanelSheet = (props: {
       }}
     >
       <SheetPopup
+        animated={false}
         side="right"
         showCloseButton={false}
         keepMounted

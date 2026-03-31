@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  Sidebar,
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuSubButton,
@@ -12,6 +13,16 @@ function renderSidebarButton(className?: string) {
   return renderToStaticMarkup(
     <SidebarProvider>
       <SidebarMenuButton className={className}>Projects</SidebarMenuButton>
+    </SidebarProvider>,
+  );
+}
+
+function renderDesktopSidebar() {
+  return renderToStaticMarkup(
+    <SidebarProvider>
+      <Sidebar>
+        <div>Sidebar content</div>
+      </Sidebar>
     </SidebarProvider>,
   );
 }
@@ -49,5 +60,14 @@ describe("sidebar interactive cursors", () => {
 
     expect(html).toContain('data-slot="sidebar-menu-sub-button"');
     expect(html).toContain("cursor-pointer");
+  });
+
+  it("renders desktop sidebar containers without toggle transition classes", () => {
+    const html = renderDesktopSidebar();
+
+    expect(html).toContain('data-slot="sidebar-gap"');
+    expect(html).toContain('data-slot="sidebar-container"');
+    expect(html).not.toContain("transition-[width]");
+    expect(html).not.toContain("transition-[left,right,width]");
   });
 });

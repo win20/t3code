@@ -2,9 +2,16 @@
 
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
-import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { cn } from "~/lib/utils";
+import {
+  getSheetBackdropClassName,
+  getSheetPopupClassName,
+  getSheetViewportClassName,
+  type SheetSide,
+  type SheetVariant,
+} from "./sheet.logic";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -18,13 +25,16 @@ function SheetClose(props: SheetPrimitive.Close.Props) {
   return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
 }
 
-function SheetBackdrop({ className, ...props }: SheetPrimitive.Backdrop.Props) {
+function SheetBackdrop({
+  animated = true,
+  className,
+  ...props
+}: SheetPrimitive.Backdrop.Props & {
+  animated?: boolean;
+}) {
   return (
     <SheetPrimitive.Backdrop
-      className={cn(
-        "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",
-        className,
-      )}
+      className={getSheetBackdropClassName({ animated, className })}
       data-slot="sheet-backdrop"
       {...props}
     />
@@ -37,20 +47,16 @@ function SheetViewport({
   variant = "default",
   ...props
 }: SheetPrimitive.Viewport.Props & {
-  side?: "right" | "left" | "top" | "bottom";
-  variant?: "default" | "inset";
+  side?: SheetSide;
+  variant?: SheetVariant;
 }) {
   return (
     <SheetPrimitive.Viewport
-      className={cn(
-        "fixed inset-0 z-50 grid",
-        side === "bottom" && "grid grid-rows-[1fr_auto] pt-12",
-        side === "top" && "grid grid-rows-[auto_1fr] pb-12",
-        side === "left" && "flex justify-start",
-        side === "right" && "flex justify-end",
-        variant === "inset" && "sm:p-4",
+      className={getSheetViewportClassName({
         className,
-      )}
+        ...(side ? { side } : {}),
+        variant,
+      })}
       data-slot="sheet-viewport"
       {...props}
     />
@@ -62,34 +68,28 @@ function SheetPopup({
   children,
   showCloseButton = true,
   keepMounted = false,
+  animated = true,
   side = "right",
   variant = "default",
   ...props
 }: SheetPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   keepMounted?: boolean;
-  side?: "right" | "left" | "top" | "bottom";
-  variant?: "default" | "inset";
+  animated?: boolean;
+  side?: SheetSide;
+  variant?: SheetVariant;
 }) {
   return (
     <SheetPortal keepMounted={keepMounted}>
-      <SheetBackdrop />
+      <SheetBackdrop animated={animated} />
       <SheetViewport side={side} variant={variant}>
         <SheetPrimitive.Popup
-          className={cn(
-            "relative flex max-h-full min-h-0 w-full min-w-0 flex-col bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 transition-[opacity,translate] duration-200 ease-in-out will-change-transform before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:opacity-0 data-starting-style:opacity-0 max-sm:before:hidden dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
-            side === "bottom" &&
-              "row-start-2 border-t data-ending-style:translate-y-8 data-starting-style:translate-y-8",
-            side === "top" &&
-              "data-ending-style:-translate-y-8 data-starting-style:-translate-y-8 border-b",
-            side === "left" &&
-              "data-ending-style:-translate-x-8 data-starting-style:-translate-x-8 w-[calc(100%-(--spacing(12)))] max-w-md border-e",
-            side === "right" &&
-              "col-start-2 w-[calc(100%-(--spacing(12)))] max-w-md border-s data-ending-style:translate-x-8 data-starting-style:translate-x-8",
-            variant === "inset" &&
-              "before:hidden sm:rounded-2xl sm:border sm:before:rounded-[calc(var(--radius-2xl)-1px)] sm:**:data-[slot=sheet-footer]:rounded-b-[calc(var(--radius-2xl)-1px)]",
+          className={getSheetPopupClassName({
+            animated,
             className,
-          )}
+            ...(side ? { side } : {}),
+            variant,
+          })}
           data-slot="sheet-popup"
           {...props}
         >

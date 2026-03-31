@@ -3577,6 +3577,67 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("opens and closes the diff sheet without sheet transition classes", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-diff-sheet-toggle-test" as MessageId,
+        targetText: "diff sheet toggle test",
+      }),
+    });
+
+    try {
+      const diffToggle = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>(
+            'button[aria-label="Toggle diff panel"]:not([disabled])',
+          ),
+        "Unable to find enabled diff toggle button.",
+      );
+
+      diffToggle.click();
+
+      await vi.waitFor(
+        () => {
+          expect(mounted.router.state.location.search.diff).toBe("1");
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      const diffSheet = await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-slot="sheet-popup"]:not([hidden])'),
+        "Unable to find diff sheet popup.",
+      );
+      const diffBackdrop = await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-slot="sheet-backdrop"]'),
+        "Unable to find diff sheet backdrop.",
+      );
+
+      expect(diffSheet.className).toContain("w-[min(88vw,820px)]");
+      expect(diffSheet.className).not.toContain("transition-[opacity,translate]");
+      expect(diffBackdrop.className).not.toContain("transition-all");
+
+      const openDiffToggle = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>(
+            'button[aria-label="Toggle diff panel"]:not([disabled])',
+          ),
+        "Unable to find diff toggle button after opening the sheet.",
+      );
+
+      openDiffToggle.click();
+
+      await vi.waitFor(
+        () => {
+          expect(mounted.router.state.location.search.diff).toBeUndefined();
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("keeps long proposed plans lightweight until the user expands them", async () => {
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
