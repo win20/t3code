@@ -1,8 +1,11 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Option } from "effect";
 
-import { resolveBuildOptions } from "./build-desktop-artifact.ts";
+import {
+  resolveBuildOptions,
+  selectMacAppBundleRelativePath,
+} from "./build-desktop-artifact.ts";
 
 it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it.effect("preserves explicit false boolean flags over true env defaults", () =>
@@ -42,4 +45,38 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(resolved.mockUpdates, false);
     }),
   );
+describe("build-desktop-artifact", () => {
+  it("selects the named macOS app bundle from dir target output", () => {
+    const relativePath = selectMacAppBundleRelativePath(
+      [
+        "builder-effective-config.yaml",
+        "mac-arm64",
+        "mac-arm64/T3 Code (Custom).app",
+        "mac-arm64/T3 Code (Custom).app/Contents",
+      ],
+      "T3 Code (Custom)",
+    );
+
+    assert.equal(relativePath, "mac-arm64/T3 Code (Custom).app");
+  });
+
+  it("falls back to the only available app bundle when one exists", () => {
+    const relativePath = selectMacAppBundleRelativePath(
+      ["mac-arm64", "mac-arm64/T3 Code (Alpha).app"],
+      "T3 Code (Custom)",
+    );
+
+    assert.equal(relativePath, "mac-arm64/T3 Code (Alpha).app");
+  });
+
+  it("rejects ambiguous dir target output when no bundle matches the requested name", () => {
+    assert.throws(
+      () =>
+        selectMacAppBundleRelativePath(
+          ["mac-arm64/T3 Code (Alpha).app", "mac-arm64/Another Build.app"],
+          "T3 Code (Custom)",
+        ),
+      /Expected exactly one macOS \.app bundle/,
+    );
+  });
 });

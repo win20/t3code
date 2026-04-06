@@ -68,6 +68,7 @@ interface BuildCliInput {
   readonly platform: Option.Option<typeof BuildPlatform.Type>;
   readonly target: Option.Option<string>;
   readonly arch: Option.Option<typeof BuildArch.Type>;
+  readonly productName: Option.Option<string>;
   readonly buildVersion: Option.Option<string>;
   readonly outputDir: Option.Option<string>;
   readonly skipBuild: Option.Option<boolean>;
@@ -121,6 +122,32 @@ function resolveGitCommitHash(repoRoot: string): string {
   return hash.toLowerCase();
 }
 
+export function selectMacAppBundleRelativePath(
+  entries: ReadonlyArray<string>,
+  productName: string,
+): string {
+  const appBundleEntries = entries.filter((entry) => entry.endsWith(".app"));
+  if (appBundleEntries.length === 0) {
+    throw new Error("No macOS .app bundle was produced by the dir target.");
+  }
+
+  const expectedBundleName = `${productName}.app`;
+  const exactMatch = appBundleEntries.find(
+    (entry) => entry === expectedBundleName || entry.endsWith(`/${expectedBundleName}`),
+  );
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  if (appBundleEntries.length === 1) {
+    return appBundleEntries[0]!;
+  }
+
+  throw new Error(
+    `Expected exactly one macOS .app bundle or a bundle named "${productName}.app", found: ${appBundleEntries.join(", ")}`,
+  );
+}
+
 function resolvePythonForNodeGyp(): string | undefined {
   const configured = process.env.npm_config_python ?? process.env.PYTHON;
   if (configured && existsSync(configured)) {
@@ -158,6 +185,7 @@ interface ResolvedBuildOptions {
   readonly platform: typeof BuildPlatform.Type;
   readonly target: string;
   readonly arch: typeof BuildArch.Type;
+  readonly productName: string;
   readonly version: string | undefined;
   readonly outputDir: string;
   readonly skipBuild: boolean;
@@ -170,6 +198,7 @@ interface ResolvedBuildOptions {
 
 interface StagePackageJson {
   readonly name: string;
+  readonly productName: string;
   readonly version: string;
   readonly buildVersion: string;
   readonly t3codeCommitHash: string;
@@ -203,6 +232,7 @@ const BuildEnvConfig = Config.all({
   platform: Config.schema(BuildPlatform, "T3CODE_DESKTOP_PLATFORM").pipe(Config.option),
   target: Config.string("T3CODE_DESKTOP_TARGET").pipe(Config.option),
   arch: Config.schema(BuildArch, "T3CODE_DESKTOP_ARCH").pipe(Config.option),
+  productName: Config.string("T3CODE_DESKTOP_PRODUCT_NAME").pipe(Config.option),
   version: Config.string("T3CODE_DESKTOP_VERSION").pipe(Config.option),
   outputDir: Config.string("T3CODE_DESKTOP_OUTPUT_DIR").pipe(Config.option),
   skipBuild: Config.boolean("T3CODE_DESKTOP_SKIP_BUILD").pipe(Config.withDefault(false)),
@@ -239,6 +269,11 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
 
   const target = mergeOptions(input.target, env.target, PLATFORM_CONFIG[platform].defaultTarget);
   const arch = mergeOptions(input.arch, env.arch, getDefaultArch(platform));
+  const productName = mergeOptions(
+    input.productName,
+    env.productName,
+    desktopPackageJson.productName ?? "T3 Code",
+  );
   const version = mergeOptions(input.buildVersion, env.version, undefined);
   const releaseDir = resolveBooleanFlag(input.mockUpdates, env.mockUpdates)
     ? "release-mock"
@@ -264,6 +299,7 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     platform,
     target,
     arch,
+    productName,
     version,
     outputDir,
     skipBuild,
@@ -425,6 +461,55 @@ function validateBundledClientAssets(clientDir: string) {
     }
   });
 }
+
+const listDirectoryEntriesRecursive = Effect.fn("listDirectoryEntriesRecursive")(function* (
+  rootDir: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  const loop = (
+    currentDir: string,
+    relativeDir: string,
+  ): Effect.Effect<ReadonlyArray<string>, BuildScriptError, never> =>
+    Effect.gen(function* () {
+      const childEntries = yield* fs.readDirectory(currentDir).pipe(
+        Effect.mapError(
+          (cause) =>
+            new BuildScriptError({
+              message: `Could not read staged artifact directory at ${currentDir}.`,
+              cause,
+            }),
+        ),
+      );
+      const discoveredEntries: string[] = [];
+
+      for (const childEntry of childEntries) {
+        const absolutePath = path.join(currentDir, childEntry);
+        const stat = yield* fs.stat(absolutePath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new BuildScriptError({
+                message: `Could not stat staged artifact entry at ${absolutePath}.`,
+                cause,
+              }),
+          ),
+        );
+        const relativePath =
+          relativeDir.length > 0 ? path.join(relativeDir, childEntry) : childEntry;
+        discoveredEntries.push(relativePath);
+
+        if (stat.type === "Directory") {
+          const nestedEntries = yield* loop(absolutePath, relativePath);
+          discoveredEntries.push(...nestedEntries);
+        }
+      }
+
+      return discoveredEntries;
+    });
+
+  return yield* loop(rootDir, "");
+});
 
 function resolveDesktopRuntimeDependencies(
   dependencies: Record<string, string> | undefined,
@@ -672,6 +757,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   const stagePackageJson: StagePackageJson = {
     name: "t3code",
+    productName: options.productName,
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
@@ -682,7 +768,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     build: yield* createBuildConfig(
       options.platform,
       options.target,
-      desktopPackageJson.productName ?? "T3 Code",
+      options.productName,
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
@@ -761,14 +847,37 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.makeDirectory(options.outputDir, { recursive: true });
 
   const copiedArtifacts: string[] = [];
-  for (const entry of stageEntries) {
-    const from = path.join(stageDistDir, entry);
-    const stat = yield* fs.stat(from).pipe(Effect.catch(() => Effect.succeed(null)));
-    if (!stat || stat.type !== "File") continue;
-
-    const to = path.join(options.outputDir, entry);
-    yield* fs.copyFile(from, to);
+  if (options.platform === "mac" && options.target === "dir") {
+    const stageDistEntries = yield* listDirectoryEntriesRecursive(stageDistDir);
+    const selectedAppBundleRelativePath = yield* Effect.try({
+      try: () => selectMacAppBundleRelativePath(stageDistEntries, options.productName),
+      catch: (cause) =>
+        new BuildScriptError({
+          message: "Build completed but the macOS .app bundle could not be resolved.",
+          cause,
+        }),
+    });
+    const from = path.join(stageDistDir, selectedAppBundleRelativePath);
+    const to = path.join(options.outputDir, path.basename(selectedAppBundleRelativePath));
+    if (yield* fs.exists(to)) {
+      yield* fs.remove(to, { force: true, recursive: true });
+    }
+    yield* runCommand(
+      ChildProcess.make({
+        ...commandOutputOptions(options.verbose),
+      })`ditto ${from} ${to}`,
+    );
     copiedArtifacts.push(to);
+  } else {
+    for (const entry of stageEntries) {
+      const from = path.join(stageDistDir, entry);
+      const stat = yield* fs.stat(from).pipe(Effect.catch(() => Effect.succeed(null)));
+      if (!stat || stat.type !== "File") continue;
+
+      const to = path.join(options.outputDir, entry);
+      yield* fs.copyFile(from, to);
+      copiedArtifacts.push(to);
+    }
   }
 
   if (copiedArtifacts.length === 0) {
@@ -795,6 +904,10 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
   ),
   arch: Flag.choice("arch", BuildArch.literals).pipe(
     Flag.withDescription("Build arch, for example arm64/x64/universal (env: T3CODE_DESKTOP_ARCH)."),
+    Flag.optional,
+  ),
+  productName: Flag.string("product-name").pipe(
+    Flag.withDescription("Desktop app display name (env: T3CODE_DESKTOP_PRODUCT_NAME)."),
     Flag.optional,
   ),
   buildVersion: Flag.string("build-version").pipe(
@@ -839,11 +952,11 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
 );
 
 const cliRuntimeLayer = Layer.mergeAll(Logger.layer([Logger.consolePretty()]), NodeServices.layer);
+const runtimeProgram = Command.run(buildDesktopArtifactCli, { version: "0.0.0" }).pipe(
+  Effect.scoped,
+  Effect.provide(cliRuntimeLayer),
+);
 
 if (import.meta.main) {
-  Command.run(buildDesktopArtifactCli, { version: "0.0.0" }).pipe(
-    Effect.scoped,
-    Effect.provide(cliRuntimeLayer),
-    NodeRuntime.runMain,
-  );
+  NodeRuntime.runMain(runtimeProgram);
 }
