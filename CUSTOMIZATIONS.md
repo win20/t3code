@@ -12,6 +12,7 @@ This fork keeps a thin custom layer on top of the upstream `pingdotgg/t3code` pr
 
 1. `26a5f764` `feat(web): add mod-enter composer submit`
 2. `808de3bf` `fix(web): disable side-panel toggle animations`
+3. `c3157681` `build(desktop): support custom app product names`
 
 When adding new custom behavior, prefer extension points, configuration, or isolated modules over invasive edits to hot upstream files.
 
