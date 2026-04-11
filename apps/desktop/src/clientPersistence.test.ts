@@ -54,6 +54,7 @@ const clientSettings: ClientSettings = {
   diffWordWrap: true,
   sidebarProjectSortOrder: "manual",
   sidebarThreadSortOrder: "created_at",
+  submitOnModEnter: false,
   timestampFormat: "24-hour",
 };
 

@@ -10,9 +10,12 @@ This fork keeps a thin custom layer on top of the upstream `pingdotgg/t3code` pr
 
 ## Current custom changes
 
-1. `26a5f764` `feat(web): add mod-enter composer submit`
-2. `808de3bf` `fix(web): disable side-panel toggle animations`
-3. `c3157681` `build(desktop): support custom app product names`
+1. `b7dca508` `feat(web): add mod-enter composer submit`
+2. `f8141fde` `fix(web): disable side-panel toggle animations`
+3. `93c4f9f6` `docs: add custom fork workflow notes`
+4. `3b4cccd8` `build(desktop): support custom app product names`
+5. `8980a12d` `docs: record desktop custom build support`
+6. `8c1233c9` `build(desktop): reuse release dir for custom app builds`
 
 When adding new custom behavior, prefer extension points, configuration, or isolated modules over invasive edits to hot upstream files.
 

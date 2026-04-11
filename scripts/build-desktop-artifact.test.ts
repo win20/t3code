@@ -2,10 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Option } from "effect";
 
-import {
-  resolveBuildOptions,
-  selectMacAppBundleRelativePath,
-} from "./build-desktop-artifact.ts";
+import { resolveBuildOptions, selectMacAppBundleRelativePath } from "./build-desktop-artifact.ts";
 
 it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it.effect("preserves explicit false boolean flags over true env defaults", () =>
@@ -14,6 +11,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         platform: Option.some("mac"),
         target: Option.none(),
         arch: Option.some("arm64"),
+        productName: Option.none(),
         buildVersion: Option.none(),
         outputDir: Option.some("release-test"),
         skipBuild: Option.some(false),
@@ -45,6 +43,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(resolved.mockUpdates, false);
     }),
   );
+});
+
 describe("build-desktop-artifact", () => {
   it("selects the named macOS app bundle from dir target output", () => {
     const relativePath = selectMacAppBundleRelativePath(

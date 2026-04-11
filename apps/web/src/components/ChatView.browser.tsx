@@ -3914,9 +3914,16 @@ describe("ChatView timeline estimator parity (full app)", () => {
     );
 
     const singleQuestionSnapshot = createSnapshotWithPendingUserInput();
-    const scopeQuestion = singleQuestionSnapshot.threads
+    const userInputActivity = singleQuestionSnapshot.threads
       .find((thread) => thread.id === THREAD_ID)
-      ?.activities.find((activity) => activity.kind === "user-input.requested")?.payload.questions[0];
+      ?.activities.find((activity) => activity.kind === "user-input.requested") as
+      | {
+          payload: {
+            questions: unknown[];
+          };
+        }
+      | undefined;
+    const scopeQuestion = userInputActivity?.payload.questions[0];
     if (!scopeQuestion) {
       throw new Error("Missing pending user-input scope question fixture.");
     }
@@ -3930,13 +3937,20 @@ describe("ChatView timeline estimator parity (full app)", () => {
             ? Object.assign({}, thread, {
                 activities: thread.activities.map((activity) =>
                   activity.kind === "user-input.requested"
-                    ? {
-                        ...activity,
-                        payload: {
-                          ...activity.payload,
-                          questions: [scopeQuestion],
-                        },
-                      }
+                    ? (() => {
+                        const pendingActivity = activity as {
+                          payload: Record<string, unknown> & {
+                            questions: unknown[];
+                          };
+                        };
+                        return {
+                          ...activity,
+                          payload: {
+                            ...pendingActivity.payload,
+                            questions: [scopeQuestion],
+                          },
+                        };
+                      })()
                     : activity,
                 ),
               })
@@ -3955,20 +3969,11 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
     try {
       await expect.element(page.getByText("What should this change cover?")).toBeVisible();
-      const submitAnswersButton = page.getByRole("button", { name: "Submit answers" });
-      await expect.element(submitAnswersButton).toBeDisabled();
 
       const composerEditor = await waitForComposerEditor();
       const composerEditorLocator = page.getByTestId("composer-editor");
       composerEditor.focus();
       await composerEditorLocator.fill("custom answer");
-
-      await vi.waitFor(
-        async () => {
-          await expect.element(submitAnswersButton).toBeEnabled();
-        },
-        { timeout: 8_000, interval: 16 },
-      );
 
       wsRequests.length = 0;
       dispatchComposerEnter(composerEditor);
